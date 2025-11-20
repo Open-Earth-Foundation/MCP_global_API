@@ -45,5 +45,6 @@ MCP_global_API/
 
 * Check the health of the CityCatalyst Global API service
 * Get city emissions for source SEEG, city BR SER, year 2022, and GPC reference number II.1.1
-
+* Get the area for city with locode "BR SER"
+* What GPC reference numbers are covered by the SEEG source?
 

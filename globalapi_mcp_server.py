@@ -7,7 +7,7 @@ Requirements:
     pip install fastmcp httpx
 """
 from fastmcp import FastMCP
-from globalapi_api_client import get_health, get_city_emissions as get_city_emissions_api
+from globalapi_api_client import get_health, get_city_emissions as get_city_emissions_api, get_city_area, get_catalogue, get_gpc_reference_numbers_by_source as get_gpc_reference_numbers_by_source_api
 
 # Create the MCP server instance
 mcp = FastMCP("CityCatalyst Global API")
@@ -60,6 +60,78 @@ def get_city_emissions(source: str, city: str, year: str, gpc_reference_number: 
         raise
 
 
+@mcp.tool()
+def get_city_area_tool(locode: str) -> dict:
+    """
+    Get the area of a city by its locode.
+    Retrieve the area of a city in square kilometers.
+    
+    Args:
+        locode: Unique identifier for the city (e.g., "BR SER" for São Paulo)
+    
+    Returns:
+        dict: City area information in square kilometers
+    """
+    import sys
+    print(f"\n>>> [MCP SERVER] Tool called: get_city_area", file=sys.stderr)
+    print(f"    Parameters: locode={locode}", file=sys.stderr)
+    try:
+        result = get_city_area(locode=locode)
+        print(f"    Result: {result}", file=sys.stderr)
+        return result
+    except Exception as e:
+        print(f"    Error: {e}", file=sys.stderr)
+        raise
+
+
+@mcp.tool()
+def get_data_catalogue(format: str = None) -> dict:
+    """
+    Get the data catalogue from CityCatalyst Global API.
+    Retrieves the list of available datasources.
+    
+    Args:
+        format: Optional format parameter. Supports "csv" for CSV format.
+    
+    Returns:
+        dict: Catalogue data with list of datasources
+    """
+    import sys
+    print(f"\n>>> [MCP SERVER] Tool called: get_data_catalogue", file=sys.stderr)
+    print(f"    Parameters: format={format}", file=sys.stderr)
+    try:
+        result = get_catalogue(format=format)
+        print(f"    Result: Retrieved catalogue data", file=sys.stderr)
+        return result
+    except Exception as e:
+        print(f"    Error: {e}", file=sys.stderr)
+        raise
+
+
+@mcp.tool()
+def get_gpc_refs_by_source(source: str) -> list:
+    """
+    Get all GPC reference numbers covered by a particular source.
+    Filters the catalogue data to find all GPC reference numbers for the specified source.
+    
+    Args:
+        source: Data source name (e.g., "SEEG")
+    
+    Returns:
+        list: List of unique GPC reference numbers for the specified source, sorted alphabetically
+    """
+    import sys
+    print(f"\n>>> [MCP SERVER] Tool called: get_gpc_refs_by_source", file=sys.stderr)
+    print(f"    Parameters: source={source}", file=sys.stderr)
+    try:
+        result = get_gpc_reference_numbers_by_source_api(source=source)
+        print(f"    Result: Found {len(result)} GPC reference numbers", file=sys.stderr)
+        return result
+    except Exception as e:
+        print(f"    Error: {e}", file=sys.stderr)
+        raise
+
+
 if __name__ == "__main__":
     # Run the MCP server using the default STDIO transport
     import sys
@@ -67,7 +139,7 @@ if __name__ == "__main__":
     print("MCP SERVER STARTING - CityCatalyst Global API", file=sys.stderr)
     print("=" * 60, file=sys.stderr)
     print(f"Transport: STDIO (stdin/stdout)", file=sys.stderr)
-    print(f"Available tools: health_check, get_city_emissions", file=sys.stderr)
+    print(f"Available tools: health_check, get_city_emissions, get_city_area, get_catalogue, get_gpc_refs_by_source", file=sys.stderr)
     print(f"API Base URL: https://ccglobal.openearth.dev", file=sys.stderr)
     print(f"Waiting for client requests...", file=sys.stderr)
     print("=" * 60, file=sys.stderr)
