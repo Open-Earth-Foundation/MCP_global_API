@@ -16,7 +16,7 @@ from starlette.requests import Request
 from starlette.responses import JSONResponse
 from globalapi_api_client import (
     get_health,
-    get_city_emissions as get_city_emissions_api,
+    get_city_emissions_all_scopes as get_city_emissions_all_scopes_api,
     get_city_area,
     get_catalogue,
     get_gpc_reference_numbers_by_source as get_gpc_reference_numbers_by_source_api,
@@ -66,26 +66,55 @@ def health_check() -> dict:
 
 
 @mcp.tool()
-def get_city_emissions(source: str, city: str, year: str, gpc_reference_number: str, gwp: str = "ar5") -> str:
+def get_city_emissions(
+    source: str,
+    city: str,
+    year: str,
+    gpc_reference_number: str | None = None,
+    gwp: str = "ar5",
+) -> dict:
     """
-    Get total CO2eq emissions from CityCatalyst Global API.
+    Get CO2eq emissions (100yr) for a city across all available GPC scopes.
+
+    Returns every scope for the source, marking any scope with missing data as "empty".
+    A specific gpc_reference_number can be provided to prioritize that scope, but the
+    full set is still returned so the LLM can respond comprehensively.
     
     Args:
         source: Data source (e.g., "SEEG")
         city: City identifier (e.g., "BR SER")
         year: Year (e.g., "2022")
-        gpc_reference_number: GPC reference number (e.g., "II.1.1")
+        gpc_reference_number: Optional GPC reference number to prioritize (e.g., "II.1.1")
         gwp: Global Warming Potential standard (default: "ar5")
     
     Returns:
-        str: Total CO2eq emissions (100yr) value
+        dict: Emissions per GPC scope with status for empty scopes.
     """
     import sys
     print(f"\n>>> [MCP SERVER] Tool called: get_city_emissions", file=sys.stderr)
     print(f"    Parameters: source={source}, city={city}, year={year}, gpc_reference_number={gpc_reference_number}, gwp={gwp}", file=sys.stderr)
     try:
-        result = get_city_emissions_api(source=source, city=city, year=year, gpc_reference_number=gpc_reference_number, gwp=gwp)
-        print(f"    Result: Total CO2eq (100yr) = {result}", file=sys.stderr)
+        base_scopes = get_gpc_reference_numbers_by_source_api(source=source)
+        
+        if gpc_reference_number:
+            # Keep requested scope first; include the rest to satisfy the "all scopes" requirement.
+            if gpc_reference_number in base_scopes:
+                scopes = [gpc_reference_number] + [s for s in base_scopes if s != gpc_reference_number]
+            else:
+                scopes = [gpc_reference_number] + base_scopes
+        else:
+            scopes = base_scopes
+
+        result = get_city_emissions_all_scopes_api(
+            source=source,
+            city=city,
+            year=year,
+            gwp=gwp,
+            gpc_scopes=scopes,
+        )
+
+        empty_scopes = [r["gpc_reference_number"] for r in result.get("emissions", []) if r.get("status") == "empty"]
+        print(f"    Returned {len(result.get('emissions', []))} scopes; empty scopes: {empty_scopes}", file=sys.stderr)
         return result
     except Exception as e:
         print(f"    Error: {e}", file=sys.stderr)
@@ -143,14 +172,14 @@ def get_data_catalogue(format: str = None) -> dict:
 @mcp.tool()
 def get_gpc_refs_by_source(source: str) -> list:
     """
-    Get all GPC reference numbers covered by a particular source.
+    List all GPC reference numbers (GPC scopes) covered by a particular source.
     Filters the catalogue data to find all GPC reference numbers for the specified source.
     
     Args:
         source: Data source name (e.g., "SEEG")
     
     Returns:
-        list: List of unique GPC reference numbers for the specified source, sorted alphabetically
+        list: Unique GPC scopes for the specified source, sorted alphabetically.
     """
     import sys
     print(f"\n>>> [MCP SERVER] Tool called: get_gpc_refs_by_source", file=sys.stderr)

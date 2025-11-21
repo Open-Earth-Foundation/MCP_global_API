@@ -21,9 +21,25 @@ def get_health() -> dict:
     return response.json()
 
 
-def get_city_emissions(source: str, city: str, year: str, gpc_reference_number: str, gwp: str = "ar5") -> str:
+def _fetch_city_emission(source: str, city: str, year: str, gpc_reference_number: str, gwp: str = "ar5") -> str | None:
     """
-    Get total CO2eq emissions from CityCatalyst Global API.
+    Single-scope helper: fetch total CO2eq (100yr) for a given GPC reference number.
+    """
+    import urllib.parse
+
+    city_encoded = urllib.parse.quote(city)
+    path = f"/api/v1/source/{source}/city/{city_encoded}/{year}/{gpc_reference_number}"
+    params = {"gwp": gwp}
+
+    response = httpx.get(f"{BASE_URL}{path}", params=params, timeout=10.0)
+    response.raise_for_status()
+    data = response.json()
+    return data.get("totals", {}).get("emissions", {}).get("co2eq_100yr")
+
+
+def get_city_emissions(source: str, city: str, year: str, gpc_reference_number: str, gwp: str = "ar5") -> str | None:
+    """
+    Get total CO2eq emissions from CityCatalyst Global API for a single GPC scope.
     
     Args:
         source: Data source (e.g., "SEEG")
@@ -33,25 +49,86 @@ def get_city_emissions(source: str, city: str, year: str, gpc_reference_number: 
         gwp: Global Warming Potential standard (default: "ar5")
     
     Returns:
-        str: Total CO2eq emissions (100yr) value
+        str | None: Total CO2eq emissions (100yr) value, or None when no data exists.
     """
-    import urllib.parse
-    
-    # URL encode the city parameter
-    city_encoded = urllib.parse.quote(city)
-    
-    # Build the URL path
-    path = f"/api/v1/source/{source}/city/{city_encoded}/{year}/{gpc_reference_number}"
-    params = {"gwp": gwp}
-    
-    response = httpx.get(f"{BASE_URL}{path}", params=params, timeout=10.0)
-    response.raise_for_status()
-    data = response.json()
-    
-    # Extract and return total CO2eq emissions
-    total_co2eq = data.get("totals", {}).get("emissions", {}).get("co2eq_100yr")
-    
-    return total_co2eq
+    return _fetch_city_emission(source, city, year, gpc_reference_number, gwp)
+
+
+def get_city_emissions_all_scopes(
+    source: str,
+    city: str,
+    year: str,
+    gwp: str = "ar5",
+    gpc_scopes: list[str] | None = None,
+) -> dict:
+    """
+    Retrieve emissions across all GPC scopes for a given city and source.
+
+    If any scope returns no data, it is marked as empty so the caller can surface that
+    to the LLM.
+
+    Returns:
+        dict: {
+            "gpc_scopes": [...],
+            "emissions": [
+                {"gpc_reference_number": "I.1.1", "co2eq_100yr": 123, "status": "ok"},
+                {"gpc_reference_number": "II.1.1", "co2eq_100yr": None, "status": "empty", "message": "..."},
+            ],
+        }
+    """
+    scopes = gpc_scopes or get_gpc_reference_numbers_by_source(source)
+    emissions: list[dict] = []
+
+    for scope in scopes:
+        try:
+            value = _fetch_city_emission(source, city, year, scope, gwp)
+            if value is None:
+                emissions.append(
+                    {
+                        "gpc_reference_number": scope,
+                        "co2eq_100yr": None,
+                        "status": "empty",
+                        "message": "No emissions data for this scope.",
+                    }
+                )
+            else:
+                emissions.append(
+                    {
+                        "gpc_reference_number": scope,
+                        "co2eq_100yr": value,
+                        "status": "ok",
+                    }
+                )
+        except httpx.HTTPStatusError as exc:  # type: ignore[attr-defined]
+            if exc.response is not None and exc.response.status_code == 404:
+                emissions.append(
+                    {
+                        "gpc_reference_number": scope,
+                        "co2eq_100yr": None,
+                        "status": "empty",
+                        "message": "No emissions data for this scope (404 from API).",
+                    }
+                )
+            else:
+                emissions.append(
+                    {
+                        "gpc_reference_number": scope,
+                        "co2eq_100yr": None,
+                        "status": "error",
+                        "message": str(exc),
+                    }
+                )
+        except Exception as exc:  # noqa: BLE001
+            emissions.append(
+                {
+                    "gpc_reference_number": scope,
+                    "co2eq_100yr": None,
+                    "status": "error",
+                    "message": str(exc),
+                }
+            )
+
+    return {"gpc_scopes": scopes, "emissions": emissions}
 
 
 def get_city_area(locode: str) -> dict:
