@@ -1,2 +1,5 @@
 fastmcp
 httpx
+openai
+python-dotenv
+PyYAML
