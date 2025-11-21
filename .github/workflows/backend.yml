@@ -59,7 +59,7 @@ jobs:
       AWS_SECRET_ACCESS_KEY: ${{ secrets.AWS_SECRET_ACCESS_KEY_EKS_DEV_USER }}
       EKS_DEV_NAME: ${{ secrets.EKS_DEV_NAME }}
       IMAGE_TAG: ${{ needs.build.outputs.image_tag }}
-      IMAGE_NAME: ${{ env.IMAGE_NAME }}
+      IMAGE_NAME: ghcr.io/open-earth-foundation/mcp-global-api
     steps:
       - name: Checkout repository
         uses: actions/checkout@v4
